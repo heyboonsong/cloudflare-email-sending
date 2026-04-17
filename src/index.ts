@@ -32,40 +32,55 @@ export const isValidEmail = (email: string): boolean => {
   return emailRegex.test(email)
 }
 
+const validateField = (field: string, value: string | undefined, validations: Array<[string, (val: string) => boolean]>): ValidationError[] => {
+  if (!value || typeof value !== 'string') {
+    return [{ field, message: `${field} field is required and must be a string` }]
+  }
+  
+  const errors: ValidationError[] = []
+  for (const [message, validator] of validations) {
+    if (!validator(value)) {
+      errors.push({ field, message })
+    }
+  }
+  return errors
+}
+
+const validateEmailField = (field: string, value: string | undefined): ValidationError[] =>
+  validateField(field, value, [
+    [`${field} must be a valid email address`, isValidEmail],
+  ])
+
+const validateRequiredString = (field: string, value: string | undefined): ValidationError[] =>
+  validateField(field, value, [])
+
+const validateOptionalString = (field: string, value: string | undefined): ValidationError[] => {
+  if (value !== undefined && typeof value !== 'string') {
+    return [{ field, message: `${field} must be a string` }]
+  }
+  return []
+}
+
+const validateContentRequirement = (html: string | undefined, text: string | undefined): ValidationError[] => {
+  if (!html && !text) {
+    return [{ field: 'content', message: 'At least one of html or text must be provided' }]
+  }
+  return []
+}
+
 export const validateEmailRequestData = (data: EmailRequest): E.Either<ValidationError[], EmailRequest> => {
   if (!data || typeof data !== 'object') {
     return E.left([{ field: 'body', message: 'Request body must be a valid object' }])
   }
 
-  const errors: ValidationError[] = []
-
-  if (!data.to || typeof data.to !== 'string') {
-    errors.push({ field: 'to', message: 'to field is required and must be a string' })
-  } else if (!isValidEmail(data.to)) {
-    errors.push({ field: 'to', message: 'to must be a valid email address' })
-  }
-
-  if (!data.from || typeof data.from !== 'string') {
-    errors.push({ field: 'from', message: 'from field is required and must be a string' })
-  } else if (!isValidEmail(data.from)) {
-    errors.push({ field: 'from', message: 'from must be a valid email address' })
-  }
-
-  if (!data.subject || typeof data.subject !== 'string') {
-    errors.push({ field: 'subject', message: 'subject field is required and must be a string' })
-  }
-
-  if (data.html !== undefined && typeof data.html !== 'string') {
-    errors.push({ field: 'html', message: 'html must be a string' })
-  }
-
-  if (data.text !== undefined && typeof data.text !== 'string') {
-    errors.push({ field: 'text', message: 'text must be a string' })
-  }
-
-  if (!data.html && !data.text) {
-    errors.push({ field: 'content', message: 'At least one of html or text must be provided' })
-  }
+  const errors = [
+    ...validateEmailField('to', data.to),
+    ...validateEmailField('from', data.from),
+    ...validateRequiredString('subject', data.subject),
+    ...validateOptionalString('html', data.html),
+    ...validateOptionalString('text', data.text),
+    ...validateContentRequirement(data.html, data.text),
+  ]
 
   return errors.length > 0
     ? E.left(errors)
