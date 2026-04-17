@@ -2,6 +2,10 @@ import * as E from 'fp-ts/Either'
 import * as TE from 'fp-ts/TaskEither'
 import { pipe } from 'fp-ts/function'
 
+// ============================================================================
+// Types
+// ============================================================================
+
 interface EmailRequest {
   to: string
   from: string
@@ -10,40 +14,116 @@ interface EmailRequest {
   text?: string
 }
 
+interface ValidationError {
+  field: string
+  message: string
+}
+
 interface Env {
   SEND_EMAIL: SendEmail
 }
 
-// Pure functions - no side effects, deterministic output
-const validateMethod = (method: string): E.Either<string, void> =>
+// ============================================================================
+// Pure Logic - No side effects, deterministic transformations
+// ============================================================================
+
+const isValidEmail = (email: string): boolean => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  return emailRegex.test(email)
+}
+
+const validateEmailRequestData = (data: unknown): E.Either<ValidationError[], EmailRequest> => {
+  if (!data || typeof data !== 'object') {
+    return E.left([{ field: 'body', message: 'Request body must be a valid object' }])
+  }
+
+  const request = data as Record<string, unknown>
+  const errors: ValidationError[] = []
+
+  if (!request.to || typeof request.to !== 'string') {
+    errors.push({ field: 'to', message: 'to field is required and must be a string' })
+  } else if (!isValidEmail(request.to)) {
+    errors.push({ field: 'to', message: 'to must be a valid email address' })
+  }
+
+  if (!request.from || typeof request.from !== 'string') {
+    errors.push({ field: 'from', message: 'from field is required and must be a string' })
+  } else if (!isValidEmail(request.from)) {
+    errors.push({ field: 'from', message: 'from must be a valid email address' })
+  }
+
+  if (!request.subject || typeof request.subject !== 'string') {
+    errors.push({ field: 'subject', message: 'subject field is required and must be a string' })
+  }
+
+  if (request.html !== undefined && typeof request.html !== 'string') {
+    errors.push({ field: 'html', message: 'html must be a string' })
+  }
+
+  if (request.text !== undefined && typeof request.text !== 'string') {
+    errors.push({ field: 'text', message: 'text must be a string' })
+  }
+
+  if (!request.html && !request.text) {
+    errors.push({ field: 'content', message: 'At least one of html or text must be provided' })
+  }
+
+  return errors.length > 0
+    ? E.left(errors)
+    : E.right({
+        to: request.to as string,
+        from: request.from as string,
+        subject: request.subject as string,
+        html: request.html as string | undefined,
+        text: request.text as string | undefined,
+      })
+}
+
+const determineHttpStatusCode = (error: string): number => {
+  if (error === 'Method not allowed') return 405
+  if (error.startsWith('Validation failed:')) return 400
+  if (error === 'Failed to parse request body') return 400
+  return 500
+}
+
+// ============================================================================
+// Pure Functions - Deterministic output, no side effects
+// ============================================================================
+
+const validateHttpPostMethod = (method: string): E.Either<string, void> =>
   method === 'POST' ? E.right(undefined) : E.left('Method not allowed')
 
-const createResponse = <A>(
+const formatValidationErrors = (errors: ValidationError[]): string =>
+  `Validation failed: ${errors.map(e => `${e.field}: ${e.message}`).join(', ')}`
+
+const createJsonResponse = <A>(
   success: boolean,
   data?: A,
   error?: string,
-  status: number = success ? 200 : 500,
-): Response =>
-  new Response(
+  status?: number,
+): Response => {
+  const resolvedStatus = status ?? (success ? 200 : determineHttpStatusCode(error ?? ''))
+
+  return new Response(
     JSON.stringify(success ? { success, ...data } : { success, error }),
     {
-      status,
+      status: resolvedStatus,
       headers: { 'Content-Type': 'application/json' },
     },
   )
+}
 
-// Side effects - I/O operations as TaskEither
-const parseRequestBody = (request: Request): TE.TaskEither<string, EmailRequest> =>
+// ============================================================================
+// Side Effects - I/O operations wrapped in TaskEither
+// ============================================================================
+
+const parseRequestJson = (request: Request): TE.TaskEither<string, unknown> =>
   TE.tryCatch(
-    async () => {
-      const data = await request.json<EmailRequest>()
-      return data
-    },
-    (error) =>
-      error instanceof Error ? error.message : 'Failed to parse request body',
+    async () => request.json(),
+    (error) => error instanceof Error ? error.message : 'Failed to parse request body',
   )
 
-const sendEmail = (
+const sendEmailViaService = (
   env: Env,
   emailData: EmailRequest,
 ): TE.TaskEither<string, { messageId: string }> =>
@@ -52,35 +132,55 @@ const sendEmail = (
       const response = await env.SEND_EMAIL.send(emailData)
       return { messageId: response.messageId }
     },
-    (error) => (error instanceof Error ? error.message : 'Failed to send email'),
+    (error) => error instanceof Error ? error.message : 'Failed to send email',
   )
 
-const logError = (error: string): void => console.error(error)
+const logErrorToConsole = (error: string): void => console.error(error)
 
-// Handler composition using TaskEither
+// ============================================================================
+// Composition - Orchestrate pure logic and side effects
+// ============================================================================
+
+const parseAndValidateEmailRequest = (request: Request): TE.TaskEither<string, EmailRequest> =>
+  pipe(
+    parseRequestJson(request),
+    TE.chain((data) =>
+      pipe(
+        validateEmailRequestData(data),
+        E.mapLeft(formatValidationErrors),
+        TE.fromEither,
+      ),
+    ),
+  )
+
+const handleEmailSending = (env: Env) => (emailData: EmailRequest): TE.TaskEither<string, Response> =>
+  pipe(
+    sendEmailViaService(env, emailData),
+    TE.map(({ messageId }) => createJsonResponse(true, { id: messageId })),
+  )
+
+const handleEmailRequest = (request: Request, env: Env): TE.TaskEither<string, Response> =>
+  pipe(
+    TE.fromEither(validateHttpPostMethod(request.method)),
+    TE.chain(() => parseAndValidateEmailRequest(request)),
+    TE.chain(handleEmailSending(env)),
+  )
+
+// ============================================================================
+// HTTP Handler Entry Point
+// ============================================================================
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const methodResult = validateMethod(request.method)
-
-    if (E.isLeft(methodResult)) {
-      logError(methodResult.left)
-      return createResponse(false, undefined, methodResult.left, 405)
-    }
-
-    const result = await pipe(
-      parseRequestBody(request),
-      TE.chain((emailData: EmailRequest) => sendEmail(env, emailData)),
-      TE.map(({ messageId }) => createResponse(true, { id: messageId })),
-      TE.fold(
-        (error: string) => {
-          logError(error)
-          const status = error === 'Failed to parse request body' ? 400 : 500
-          return () => Promise.resolve(createResponse(false, undefined, error, status))
+    return await pipe(
+      handleEmailRequest(request, env),
+      TE.match(
+        (error) => {
+          logErrorToConsole(error)
+          return createJsonResponse(false, undefined, error)
         },
-        (response: Response) => () => Promise.resolve(response),
+        (response) => response,
       ),
     )()
-
-    return result
   },
 }
