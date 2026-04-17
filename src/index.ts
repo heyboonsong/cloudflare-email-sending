@@ -32,50 +32,49 @@ const isValidEmail = (email: string): boolean => {
   return emailRegex.test(email)
 }
 
-const validateEmailRequestData = (data: unknown): E.Either<ValidationError[], EmailRequest> => {
+const validateEmailRequestData = (data: EmailRequest): E.Either<ValidationError[], EmailRequest> => {
   if (!data || typeof data !== 'object') {
     return E.left([{ field: 'body', message: 'Request body must be a valid object' }])
   }
 
-  const request = data as Record<string, unknown>
   const errors: ValidationError[] = []
 
-  if (!request.to || typeof request.to !== 'string') {
+  if (!data.to || typeof data.to !== 'string') {
     errors.push({ field: 'to', message: 'to field is required and must be a string' })
-  } else if (!isValidEmail(request.to)) {
+  } else if (!isValidEmail(data.to)) {
     errors.push({ field: 'to', message: 'to must be a valid email address' })
   }
 
-  if (!request.from || typeof request.from !== 'string') {
+  if (!data.from || typeof data.from !== 'string') {
     errors.push({ field: 'from', message: 'from field is required and must be a string' })
-  } else if (!isValidEmail(request.from)) {
+  } else if (!isValidEmail(data.from)) {
     errors.push({ field: 'from', message: 'from must be a valid email address' })
   }
 
-  if (!request.subject || typeof request.subject !== 'string') {
+  if (!data.subject || typeof data.subject !== 'string') {
     errors.push({ field: 'subject', message: 'subject field is required and must be a string' })
   }
 
-  if (request.html !== undefined && typeof request.html !== 'string') {
+  if (data.html !== undefined && typeof data.html !== 'string') {
     errors.push({ field: 'html', message: 'html must be a string' })
   }
 
-  if (request.text !== undefined && typeof request.text !== 'string') {
+  if (data.text !== undefined && typeof data.text !== 'string') {
     errors.push({ field: 'text', message: 'text must be a string' })
   }
 
-  if (!request.html && !request.text) {
+  if (!data.html && !data.text) {
     errors.push({ field: 'content', message: 'At least one of html or text must be provided' })
   }
 
   return errors.length > 0
     ? E.left(errors)
     : E.right({
-        to: request.to as string,
-        from: request.from as string,
-        subject: request.subject as string,
-        html: request.html as string | undefined,
-        text: request.text as string | undefined,
+        to: data.to,
+        from: data.from,
+        subject: data.subject,
+        html: data.html,
+        text: data.text,
       })
 }
 
@@ -117,9 +116,9 @@ const createJsonResponse = <A>(
 // Side Effects - I/O operations wrapped in TaskEither
 // ============================================================================
 
-const parseRequestJson = (request: Request): TE.TaskEither<string, unknown> =>
+const parseRequestJson = (request: Request): TE.TaskEither<string, EmailRequest> =>
   TE.tryCatch(
-    async () => request.json(),
+    async () => request.json() as Promise<EmailRequest>,
     (error) => error instanceof Error ? error.message : 'Failed to parse request body',
   )
 
