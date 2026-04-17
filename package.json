@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "fp-ts": "^2.16.11"
@@ -14,6 +17,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260417.1",
     "typescript": "^6.0.3",
+    "vitest": "^1.6.0",
     "wrangler": "^4.83.0"
   }
 }

@@ -6,7 +6,7 @@ import { pipe } from 'fp-ts/function'
 // Types
 // ============================================================================
 
-interface EmailRequest {
+export interface EmailRequest {
   to: string
   from: string
   subject: string
@@ -14,7 +14,7 @@ interface EmailRequest {
   text?: string
 }
 
-interface ValidationError {
+export interface ValidationError {
   field: string
   message: string
 }
@@ -27,12 +27,12 @@ interface Env {
 // Pure Logic - No side effects, deterministic transformations
 // ============================================================================
 
-const isValidEmail = (email: string): boolean => {
+export const isValidEmail = (email: string): boolean => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
   return emailRegex.test(email)
 }
 
-const validateEmailRequestData = (data: EmailRequest): E.Either<ValidationError[], EmailRequest> => {
+export const validateEmailRequestData = (data: EmailRequest): E.Either<ValidationError[], EmailRequest> => {
   if (!data || typeof data !== 'object') {
     return E.left([{ field: 'body', message: 'Request body must be a valid object' }])
   }
@@ -78,7 +78,7 @@ const validateEmailRequestData = (data: EmailRequest): E.Either<ValidationError[
       })
 }
 
-const determineHttpStatusCode = (error: string): number => {
+export const determineHttpStatusCode = (error: string): number => {
   if (error === 'Method not allowed') return 405
   if (error.startsWith('Validation failed:')) return 400
   if (error === 'Failed to parse request body') return 400
@@ -89,13 +89,13 @@ const determineHttpStatusCode = (error: string): number => {
 // Pure Functions - Deterministic output, no side effects
 // ============================================================================
 
-const validateHttpPostMethod = (method: string): E.Either<string, void> =>
+export const validateHttpPostMethod = (method: string): E.Either<string, void> =>
   method === 'POST' ? E.right(undefined) : E.left('Method not allowed')
 
-const formatValidationErrors = (errors: ValidationError[]): string =>
+export const formatValidationErrors = (errors: ValidationError[]): string =>
   `Validation failed: ${errors.map(e => `${e.field}: ${e.message}`).join(', ')}`
 
-const createJsonResponse = <A>(
+export const createJsonResponse = <A>(
   success: boolean,
   data?: A,
   error?: string,

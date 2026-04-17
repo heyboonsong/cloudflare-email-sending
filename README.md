@@ -38,6 +38,28 @@ yarn type-check
 
 ## How to Test
 
+### Unit Tests
+
+Run the test suite:
+
+```bash
+# Run all tests
+yarn test
+
+# Run tests in watch mode (for development)
+yarn test:watch
+
+# Run tests with coverage report
+yarn test:coverage
+```
+
+The test suite covers:
+- Email validation logic
+- HTTP method validation
+- Error formatting
+- HTTP status code determination
+- JSON response creation
+
 ### Manual Testing with cURL
 
 Once the development server is running, you can test the email endpoint:
