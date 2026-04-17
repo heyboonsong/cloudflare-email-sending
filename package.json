@@ -1,0 +1,19 @@
+{
+  "name": "cloudflare-email-sending",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "license": "MIT",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "fp-ts": "^2.16.11"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260417.1",
+    "typescript": "^6.0.3",
+    "wrangler": "^4.83.0"
+  }
+}
